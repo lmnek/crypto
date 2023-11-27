@@ -1,0 +1,18 @@
+TODO:
+- Blockchain+mining
+    - Dynamic Difficulty (Blockchain)
+    - Merkle root (do we need it?)
+- Transactions
+    - Is there a better place for public key than input utxo?
+    - UTXO storing+updating
+- Network communication
+    - Broadcasting new blocks
+    - API
+    - Data verification (check new blocks)
+- Storage
+    - UTXO
+    - Everything on Disk storage 
+    - Memory??
+- Wallet
+
+-> test everything correctly
