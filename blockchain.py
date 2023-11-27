@@ -28,6 +28,7 @@ class Blockchain:
     def __init__(self):
         self.chain = deque()
         self.unconfirmed_transactions = []
+        self.blockchain_difficult = 4
 
     def create_genesis_block(self):
         # Create the first block (genesis block) with arbitrary values
@@ -102,3 +103,9 @@ class Blockchain:
                 return False
 
         return True
+
+    def dynamic_difficulty(self):
+        if len(self.chain)>2016:
+            required_blockchain_difficulty = self.blockchain_difficulty*(self.chain[i-2016].timestamp-self.chain[i].timestamp)//1209600 #10mins to generate 1 block
+            return required_blockchain_difficulty
+        return self.blockchain_difficulty
