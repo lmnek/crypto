@@ -82,7 +82,7 @@ class Blockchain:
             transactions=self.unconfirmed_transactions,
             timestamp=int(time.time()),
             nonce=0,
-            difficulty=last_block.difficulty,
+            difficulty=dynamic_difficulty(), # by average time of last 20 blocks
         )
 
         proof = self.proof_of_work(new_block)
@@ -105,7 +105,7 @@ class Blockchain:
         return True
 
     def dynamic_difficulty(self):
-        if len(self.chain)>2016:
-            required_blockchain_difficulty = self.blockchain_difficulty*(self.chain[i-2016].timestamp-self.chain[i].timestamp)//1209600 #10mins to generate 1 block
+        if len(self.chain)>20:
+            required_blockchain_difficulty = self.blockchain_difficulty*(self.chain[i-20].timestamp-self.chain[i].timestamp)//1200 #1 mins to generate 1 block
             return required_blockchain_difficulty
-        return self.blockchain_difficulty
+        return self.blockchain_difficulty  # if block<20 return 4
