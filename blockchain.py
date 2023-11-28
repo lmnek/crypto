@@ -21,19 +21,30 @@ class Block:
         pass
 
     def compute_hash(self):
-        block_string = json.dumps(self.__dict__, sort_keys=True)
-        return hashlib.sha256(block_string.encode()).hexdigest()
+        block_data = {
+            'index': self.index,
+            'root': self.merkle_root,
+            'timestamp': self.timestamp,
+            'previous_hash': self.previous_hash,
+            'difficulty': self.difficulty,
+            'nonce': self.nonce,
+        }
+        block_string = json.dumps(block_data, sort_keys=True)
+        return hashlib.sha256(hashlib.sha256(block_string.encode()).digest()).hexdigest()
+    
+    
 
 class Blockchain:
     def __init__(self):
         self.chain = deque()
         self.unconfirmed_transactions = []
-        self.blockchain_difficult = 4
+        self.blockchain_difficulty = 4
 
-    def create_genesis_block(self):
+    def create_genesis_block(self,difficulty):
         # Create the first block (genesis block) with arbitrary values
-        genesis_block = Block(0, "0", [], int(time.time()), 0, 4)  # Difficulty set to 4 for simplicity
-        genesis_block.hash = genesis_block.compute_hash()
+        genesis_block = Block(0, "0", [], int(time.time()), 0, difficulty)  # Set the difficulty for the genesis block
+        proof = self.proof_of_work(genesis_block)
+        genesis_block.hash = proof
         self.chain.append(genesis_block)
 
     def add_block(self, block, proof):
@@ -73,6 +84,7 @@ class Blockchain:
 
     def mine(self, miner_address):
         if not self.unconfirmed_transactions:
+            print("No transactions to mine.")
             return False
 
         last_block = self.chain[-1]
@@ -82,7 +94,7 @@ class Blockchain:
             transactions=self.unconfirmed_transactions,
             timestamp=int(time.time()),
             nonce=0,
-            difficulty=dynamic_difficulty(), # by average time of last 20 blocks
+            difficulty=self.dynamic_difficulty(), # by average time of last 20 blocks
         )
 
         proof = self.proof_of_work(new_block)
@@ -105,7 +117,15 @@ class Blockchain:
         return True
 
     def dynamic_difficulty(self):
-        if len(self.chain)>20:
-            required_blockchain_difficulty = self.blockchain_difficulty*(self.chain[i-20].timestamp-self.chain[i].timestamp)//1200 #1 mins to generate 1 block
+        if len(self.chain) > 20:
+            total_time_diff = 0
+            for i in range(len(self.chain) - 1, len(self.chain) - 21, -1):
+                time_diff = self.chain[i].timestamp - self.chain[i - 1].timestamp
+                total_time_diff += time_diff
+
+            average_time_diff = total_time_diff / 20
+            required_blockchain_difficulty = self.blockchain_difficulty * average_time_diff // 1200  # 1 min to generate 1 block
             return required_blockchain_difficulty
-        return self.blockchain_difficulty  # if block<20 return 4
+
+        return self.blockchain_difficulty  # if block < 20 return 4
+
