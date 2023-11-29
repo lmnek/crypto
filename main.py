@@ -36,7 +36,7 @@ class BlockchainCLI:
             block_data = {
                 "index": block.index,
                 "timestamp": time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(block.timestamp)),
-                "data": {"amount": block.transactions[0]['amount']} if block.transactions else "Genesis block of simple chain",
+                "data": {"amount": block.transactions[0].outputs[0].amount} if block.transactions else "Genesis block of simple chain",
                 "previousHash": block.previous_hash,
                 "merkleRoot": block.merkle_root,
                 "hash": block.compute_hash(),
@@ -52,10 +52,10 @@ class BlockchainCLI:
         print(f"Balance for {self.miner_address}:")
         for block in self.blockchain.chain:
             for transaction in block.transactions:
-                if transaction['recipient'] == self.miner_address:
-                    balance += transaction['amount']
-                if transaction['sender'] == self.miner_address:
-                    balance -= transaction['amount']
+                for output in transaction.outputs:
+                    if output.address == self.miner_address:
+                        balance += output.amount
+
         print(f"{balance} coins\n")
 
     def mine_block(self):

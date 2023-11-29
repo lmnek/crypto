@@ -2,6 +2,7 @@ import time
 from collections import deque
 import json
 import hashlib
+from transaction import*
 
 # Inspiration from
 # https://www.alibabacloud.com/blog/595314
@@ -18,7 +19,26 @@ class Block:
 
     def calculate_merkle_root(self):
         # Implement your Merkle tree logic here
-        pass
+        if not self.transactions:
+            return hashlib.sha256(b"").hexdigest()
+
+        transaction_hashes = [tx.compute_txid() for tx in self.transactions]
+
+        while len(transaction_hashes) > 1:
+            next_level_hashes = []
+
+            for i in range(0, len(transaction_hashes), 2):
+                # If there is an odd number of transaction hashes, handle the last one separately
+                if i + 1 == len(transaction_hashes):
+                    combined_hash = transaction_hashes[i] + transaction_hashes[i]
+                else:
+                    combined_hash = transaction_hashes[i] + transaction_hashes[i + 1]
+
+                next_level_hashes.append(hashlib.sha256(combined_hash.encode()).hexdigest())
+
+            transaction_hashes = next_level_hashes
+
+        return transaction_hashes[0]
 
     def compute_hash(self):
         block_data = {
@@ -88,10 +108,12 @@ class Blockchain:
             return False
 
         last_block = self.chain[-1]
+        transactions = [Transaction([Input(tx['sender'], tx['recipient'])], [Output(tx['recipient'], tx['amount'])]) for tx in self.unconfirmed_transactions]
+    
         new_block = Block(
             index=last_block.index + 1,
             previous_hash=last_block.hash,
-            transactions=self.unconfirmed_transactions,
+            transactions=transactions,
             timestamp=int(time.time()),
             nonce=0,
             difficulty=self.dynamic_difficulty(), # by average time of last 20 blocks
