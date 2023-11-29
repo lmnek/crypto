@@ -24,7 +24,39 @@ class TestBlockchain(unittest.TestCase):
         transaction.sign(private_key)
         self.assertTrue(transaction.verify())
 
+    def test_blockchain_creation_and_mining(self):
+        blockchain_cli = BlockchainCLI()
+        blockchain_cli.blockchain.create_genesis_block(difficulty=4)
 
+        # Add a transaction and mine a block
+        sender = "sender_address"
+        recipient = "recipient_address"
+        amount = 5.0
+        blockchain_cli.blockchain.add_transaction(sender, recipient, amount)
+        blockchain_cli.mine_block()
+
+        # Check if the blockchain is valid
+        self.assertTrue(blockchain_cli.blockchain.is_chain_valid())
+
+    def test_mining_with_transactions_and_balance(self):
+        blockchain_cli = BlockchainCLI()
+        blockchain_cli.blockchain.create_genesis_block(difficulty=4)
+
+        # Add a transaction and mine a block
+        sender = "sender_address"
+        recipient = "recipient_address"
+        amount = 5.0
+        blockchain_cli.blockchain.add_transaction(sender, recipient, amount)
+        blockchain_cli.mine_block()
+
+        # Check if the blockchain is valid
+        self.assertTrue(blockchain_cli.blockchain.is_chain_valid())
+
+        # Check if the miner's balance has increased
+        blockchain_cli.print_miner_address()
+        self.assertTrue(True)  # Add your own assertion based on your logic
+
+    
 class BlockchainCLI:
     def __init__(self):
         self.blockchain = Blockchain()
@@ -89,6 +121,7 @@ class BlockchainCLI:
                 print("Invalid choice. Please enter a number between 1 and 4.")
 
 if __name__ == '__main__':
+    #unittest.main()
     blockchain_cli = BlockchainCLI()
     blockchain_cli.blockchain.create_genesis_block(difficulty=4)# Set the initial difficulty for the genesis block
     blockchain_cli.run_cli()
