@@ -215,13 +215,3 @@ class Blockchain:
     def latest_block(self):
         return self.chain[-1]
 
-    def cumulative_difficulty(self):
-        i = 1
-        cu_difficulty = 0
-        while is_branch(self.chain[0-i]): # I don't know how to do.
-            cu_difficulty += 2**self.chain[0-i].difficulty
-            i+=1
-        return cu_difficulty
-
-    def is_branch(self):
-        pass
