@@ -88,11 +88,26 @@ class BlockchainCLI:
 
         self.blockchain = Blockchain(self.node)
         self.wallet = Wallet(self.blockchain)
-
         # NEED TO BE CREATED ONLY ONCE -> then shared to other nodes
         if seed_node:
             self.blockchain.create_genesis_block(difficulty=4) # Set the initial difficulty for the genesis block
 
+    def show_transactions(self):
+        print("\nAll Transactions:")
+        all_transactions = self.storage_manager.load_all_transactions()
+        if all_transactions:
+            for transaction in all_transactions:
+                print(f"Transaction ID: {transaction.compute_txid()}")
+                print("Inputs:")
+                for inp in transaction.inputs:
+                    print(f"  Prev_txid: {inp.prev_txid}, Vout: {inp.vout}, Signature: {inp.signature}, Public Key: {inp.public_key}")
+                print("Outputs:")
+                for out in transaction.outputs:
+                    print(f"  Address: {out.address}, Amount: {out.amount}")
+                print("Signature:", transaction.signature)
+                print("\n")
+        else:
+            print("No transactions found.")
     def store_blockchain_data(self):
         self.storage_manager.store_blockchain_data(self.blockchain)
 
@@ -178,8 +193,9 @@ class BlockchainCLI:
                 print("4. Print blockchain data from database")
                 print("5. Print network info")
                 print("6. Print UTXOs (unspent)")
-                print("7. Exit")
-                choice = input("Enter your choice (0-7): ")
+                print("7. Show all transaction")
+                print("8. Exit")
+                choice = input("Enter your choice (0-8): ")
 
                 if choice == '0':
                     self.mine_block()
@@ -217,6 +233,8 @@ class BlockchainCLI:
                     print(json.dumps(utxos, indent=2))
 
                 elif choice == '7':
+                    self.show_transactions()
+                elif choice == '8':
                     return
                 else:
                     print("Invalid choice. Please enter a number between 0 and 7.")
@@ -233,4 +251,3 @@ if __name__ == '__main__':
         blockchain_cli.run_cli()
         blockchain_cli.blockchain.disconnect_node()
         storage_manager.close_connection()
-

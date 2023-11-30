@@ -3,6 +3,7 @@ import json
 import time
 import hashlib
 from transaction import*
+from storage import StorageManager
 
 # Inspiration from
 # https://www.alibabacloud.com/blog/595314
@@ -81,11 +82,11 @@ class Blockchain:
         self.difficulty = 5 
         self.break_mining = False
         self.utxos = {} # store unspent UTXOs, key is (txid, vout) -> TODO: redis
-
+        self.storage_manager = StorageManager()
         self.node = node
         node.set_blockchain(self)
 
-
+    
     def create_genesis_block(self, difficulty):
         # Create the first block (genesis block) with arbitrary values
         genesis_block = Block(0, "0", [], int(time.time()), 0, difficulty)  # Set the difficulty for the genesis block
@@ -204,6 +205,7 @@ class Blockchain:
         if transaction.verify():
             self.unconfirmed_transactions.append(transaction)
             self.node.new_transaction(transaction)
+            self.storage_manager.store_transaction(transaction)
             return transaction
         return None
 

@@ -3,6 +3,7 @@ from pymongo import MongoClient
 import redis
 import time
 from itertools import islice
+from transaction import Input, Output, Transaction
 from blockchain import *
 from bson import ObjectId
 import json
@@ -19,11 +20,62 @@ class StorageManager:
         self.mongo_db = self.mongo_client[MONGODB_DB_NAME]
         
         # Assuming you have a 'blockchain_data' collection in your database
+        self.transactions_collection = self.mongo_db.transactions
         self.blockchain_collection = self.mongo_db.blockchain_data
         
         # Initialize Redis client
         self.redis_client = redis.StrictRedis(host=REDIS_HOST, port=REDIS_PORT, decode_responses=True)
+    def store_transaction(self, transaction):
+        transaction_data = transaction.serialize()
+        self.transactions_collection.insert_one(transaction_data)
 
+    def load_transaction(self, transaction_id):
+        result = self.transactions_collection.find_one({"_id": transaction_id})
+        if result:
+            return Transaction.deserialize(result)
+        return None
+    
+    def load_all_transactions(self):
+        all_transactions = []
+        cursor = self.transactions_collection.find({})
+        for document in cursor:
+            inputs_data = document.get("inputs", [])
+            outputs_data = document.get("outputs", [])
+
+            # Deserialize inputs
+            inputs = [Input(inp["prev_txid"], inp["vout"]) for inp in inputs_data]
+            for i, inp in enumerate(inputs):
+                inp.signature = inputs_data[i].get("signature")
+                inp.public_key = inputs_data[i].get("public_key")
+
+            # Deserialize outputs
+            outputs = [Output(out["address"], out["amount"]) for out in outputs_data]
+
+            # Create a Transaction object
+            transaction = Transaction(inputs, outputs)
+            transaction.signature = document.get("signature")
+
+            all_transactions.append(transaction)
+
+        return all_transactions
+    
+    def store_transaction(self, transaction):
+        # Serialize inputs
+        inputs_data = [{"prev_txid": inp.prev_txid, "vout": inp.vout, "signature": inp.signature, "public_key": inp.public_key} for inp in transaction.inputs]
+
+        # Serialize outputs
+        outputs_data = [{"address": out.address, "amount": out.amount} for out in transaction.outputs]
+
+        # Serialize the whole transaction
+        transaction_data = {
+            "inputs": inputs_data,
+            "outputs": outputs_data,
+            "signature": transaction.signature
+        }
+
+        # Store or update in MongoDB
+        self.transactions_collection.insert_one(transaction_data)
+        print("Transaction stored successfully.")
     def store_blockchain_data(self, blockchain):
         blockchain_data = {"chain": []}
 
@@ -67,7 +119,7 @@ class StorageManager:
         result = self.mongo_db.blockchain_data.find_one({})
         if result:
             chain_data = result["chain"]
-            blockchain = Blockchain()  # Assuming you have a Blockchain class
+            blockchain = Blockchain() 
 
             for block_data in chain_data:
                 index = block_data["index"]
@@ -93,7 +145,7 @@ class StorageManager:
             return blockchain
         else:
             return None  # Or whatever makes sense for your application
-            
+           
     def close_connection(self):
         self.mongo_client.close()
 
