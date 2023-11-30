@@ -2,7 +2,7 @@ from blockchain import Blockchain
 from transaction import Input, Output, Transaction
 from functions import *
 from storage import StorageManager
-from node import Node
+from node import Node, threading
 import unittest
 import time
 import jsonpickle
@@ -68,8 +68,6 @@ class TestBlockchain(unittest.TestCase):
 class BlockchainCLI:
     def __init__(self, port):
         self.storage_manager = StorageManager()
-        self.miner_private_key, self.miner_address = generate_address()
-        print(f'Miner address: {self.miner_address}')
 
         # decide how to connect to network
         seed_node = input('Start seed node or normal node? (s/n)') == 's'
@@ -88,6 +86,7 @@ class BlockchainCLI:
 
         self.blockchain = Blockchain(self.node)
         self.wallet = Wallet(self.blockchain)
+        self.mine = False
 
         # NEED TO BE CREATED ONLY ONCE -> then shared to other nodes
         if seed_node:
@@ -136,9 +135,17 @@ class BlockchainCLI:
         new_block_index = self.blockchain.mine(self.miner_address)
         print(f"Block #{new_block_index} mined.")
 
+    def mining_thread(self):
+        while True: 
+            if self.mine:
+                self.blockchain.mine(self.miner_address)
+            time.sleep(1)
+
     def run_cli(self):
+        time.sleep(2)
         mode = input("\nChoose a mode:\n1. Wallet\n2. Developer\nEnter your choice (1-2): ")
         if mode == '1':
+            self.blockchain.node.log = False
             while True:
                 print("\nChoose an option:")
                 print("0. Create a new address")
@@ -169,6 +176,10 @@ class BlockchainCLI:
                 else:
                     print("Invalid choice. Please enter a number between 0 and 5.")
         elif mode == '2':
+            self.miner_private_key, self.miner_address = generate_address()
+            print(f'Miner address: {self.miner_address}')
+            self.mine = False 
+            threading.Thread(target=self.mining_thread).start()
             while True:
                 print("\nChoose an option:")
                 print("0. Mine a block")
@@ -178,8 +189,10 @@ class BlockchainCLI:
                 print("4. Print blockchain data from database")
                 print("5. Print network info")
                 print("6. Print UTXOs (unspent)")
-                print("7. Exit")
-                choice = input("Enter your choice (0-7): ")
+                print("7. Start/stop mining")
+                print("8. Start/stop network logs")
+                print("9. Exit")
+                choice = input("Enter your choice (0-9): ")
 
                 if choice == '0':
                     self.mine_block()
@@ -215,8 +228,13 @@ class BlockchainCLI:
                         }
                     for key, u in self.blockchain.utxos.items()]
                     print(json.dumps(utxos, indent=2))
-
                 elif choice == '7':
+                   self.mine = not self.mine 
+                elif choice == '8':
+                   self.blockchain.node.log = not self.blockchain.node.log 
+                elif choice == '9':
+                    self.blockchain.break_mining = True
+                    self.mine = False
                     return
                 else:
                     print("Invalid choice. Please enter a number between 0 and 7.")
@@ -225,7 +243,7 @@ class BlockchainCLI:
 
 
 if __name__ == '__main__':
-    if input('Run tests?(y/n)') == 'y':
+    if input('Run tests? (y/n)') == 'y':
         unittest.main()
     else:
         storage_manager = StorageManager()
