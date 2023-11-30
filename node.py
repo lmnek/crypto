@@ -5,7 +5,6 @@ import jsonpickle
 import time
 
 from blockchain import hashlib
-from threading import Event
 
 
 SEED_NODES = [('127.0.0.1', 6004)]
@@ -44,8 +43,9 @@ class Node:
         self.node.listen(5)
         self.MAX_CONNETIONS=5
 
+        self.log = True 
         self.processed_messages = set() # list of IDs
-        print(f"Node started on {self.host}:{self.port}")
+        if self.log: print(f"Node started on {self.host}:{self.port}")
 
         # start listening for connections
         listener_thread = threading.Thread(target=self.listen_for_incoming_connections)
@@ -64,7 +64,7 @@ class Node:
         self.node.close()
         for peer_socket in self.peer_sockets.values():
             peer_socket.close()
-        print('node closed')
+        if self.log: print('node closed')
 
 
     
@@ -88,7 +88,7 @@ class Node:
 
 
     def handle_client_connection(self, client, address):
-        print(f"Connected to {address}", flush=True)
+        if self.log: print(f"Connected to {address}", flush=True)
 
         self.send_to_peer(client, Message('GET_LATEST_BLOCK', None)) # ask after connecting
         self.get_peer_list(client)
@@ -112,7 +112,7 @@ class Node:
                     message = str_to_Message(m_bytes)
                     self.handle_message(client, message)
             except Exception as e:
-                print(f'Node connection error: {e}')
+                if self.log: print(f'Node connection error: {e}')
                 break
         
         client.close()
@@ -120,21 +120,20 @@ class Node:
             self.peers.remove(address)
             del self.peer_sockets[address]
             del self.listen_ports[address]
-            print(f'Disconnected from: {address}')
+            if self.log: print(f'Disconnected from: {address}')
 
     def periodic_sync(self, interval=600):  # Example interval of 10 minutes
         while self.active:
-            print('Started syncronizing')
             self.broadcast(Message('GET_LATEST_BLOCK', None))
             if len(self.peers) < self.MAX_CONNETIONS:
                 self.broadcast(Message('GET_PEERS', None))
             time.sleep(interval)
 
     def handle_message(self, client, message: Message):
-        print(f'Received: {message.m_type}, from {client.getpeername()}', flush=True)
+        if self.log: print(f'Received: {message.m_type}, from {client.getpeername()}', flush=True)
 
-        if message.broadcast and message.get_id() in self.processed_messages:
-            print('-> already processed message')
+        if message.data and message.broadcast and message.get_id() in self.processed_messages:
+            if self.log: print('-> already processed message')
             return
 
         match message.m_type:
@@ -202,7 +201,7 @@ class Node:
                 address = client.getpeername()
                 self.listen_ports[address] = (address[0], int(message.data))
             case _ :
-                print('Unknown message type')
+                if self.log: print('Unknown message type')
 
 
         # if message.broadcast and not message.get_id() in self.processed_messages:
@@ -240,18 +239,18 @@ class Node:
         self.peers.add(address)
         self.listen_ports[address] = address
         self.peer_sockets[address] = peer_socket 
-        print(f"Connected to peer {peer_host}:{peer_port}")
+        if self.log: print(f"Connected to peer {peer_host}:{peer_port}")
 
         threading.Thread(target=self.handle_client_connection, args=(peer_socket, address)).start()
 
         return peer_socket
 
     def send_to_peer(self, peer, message):
-        print(f'Sending: {message.m_type}, to {peer.getpeername()}')
+        if self.log: print(f'Sending: {message.m_type}, to {peer.getpeername()}')
         try:
             peer.sendall(message.to_str()) 
         except Exception as e:
-            print(f"Error sending message to peer: {e}")
+            if self.log: print(f"Error sending message to peer: {e}")
 
     def broadcast(self, message: Message):
         message.broadcast = True
@@ -276,15 +275,15 @@ class Node:
         for peer in peer_list:
             peer_tuple = (peer[0], int(peer[1]))
             if peer_tuple not in self.listen_ports.values() and peer_tuple != (self.host, self.port): 
-                print(f"New peer discovered: {peer_tuple}")
+                if self.log: print(f"New peer discovered: {peer_tuple}")
                 if len(self.peers) >= self.MAX_CONNETIONS:
-                    print('-> Already have max connections')
+                    if self.log: print('-> Already have max connections')
                     continue
 
                 try:
                     self.connect_to_peer(*peer_tuple)
                 except ConnectionError:
-                    print(f'Failed to connect to: {peer_tuple}')
+                    if self.log: print(f'Failed to connect to: {peer_tuple}')
 
 # Account for large messages with fragmentation
 def receive_complete_message(client_socket):
@@ -300,28 +299,3 @@ def receive_complete_message(client_socket):
             break
     return data
 
-
-
-# -----------------------------------------------------
-
-
-if __name__ == "__main__":
-    if input('A seed node? (y/n)') == 'y':
-        node = Node(*SEED_NODES[0])
-        Event().wait() # break on keyboard input
-
-    port = int(input('Port number: '))
-    node = Node('127.0.0.1', port)
-    # connect to SEED_NODES first
-    for seed in SEED_NODES:
-        try:
-            seed_peer = node.connect_to_peer(*seed)
-            node.get_peer_list(seed_peer)
-        except Exception as e:
-            print(f'Error connecting to seed node: {e}')
-
-    Event().wait()
-
-    other_port = int(input('Others port number: '))
-    other_peer = node.connect_to_peer('localhost', other_port)
-    node.send_to_peer(other_peer, Message('HELLO', {'a': 1, 'b': 2}))

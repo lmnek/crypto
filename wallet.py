@@ -9,6 +9,7 @@ class Wallet:
         private_key, address = generate_address()
         self.addresses.append((private_key, address))
         print(f'New address created: {address}')
+        print(f'Private key: {private_key}')
         return private_key, address
 
     def get_balance(self, address):

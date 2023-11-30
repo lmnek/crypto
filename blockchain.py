@@ -177,9 +177,9 @@ class Blockchain:
                 balance += u.amount
         return balance
 
-    def create_coinbase_transaction(self, recipient, amount):
+    def create_coinbase_transaction(self, recipient, amount, index):
         outputs = [Output(recipient, amount)]
-        tx = Transaction([], outputs)
+        tx = Transaction([], outputs, index)
         self.unconfirmed_transactions.insert(0, tx) # first
         return tx
 
@@ -216,7 +216,7 @@ class Blockchain:
 
     def mine(self, miner_address):
         last_block = self.chain[-1]
-        self.create_coinbase_transaction(miner_address, amount=1)  # Reward the miner
+        self.create_coinbase_transaction(miner_address, 1, last_block.index + 1)  # Reward the miner
         new_block = Block(
             index=last_block.index + 1,
             previous_hash=last_block.compute_hash(),
@@ -245,14 +245,15 @@ class Blockchain:
     def dynamic_difficulty(self):
         if len(self.chain) > 20:
             total_time_diff = 0
+            copy_time_diff = self.difficulty
             for i in range(len(self.chain) - 1, len(self.chain) - 21, -1):
                 time_diff = self.chain[i].timestamp - self.chain[i - 1].timestamp
                 total_time_diff += time_diff
 
             average_time_diff = total_time_diff / 20
             required_blockchain_difficulty = self.difficulty * average_time_diff // 1200  # 1 min to generate 1 block
-            print(f'new difficulty {required_blockchain_difficulty}')
-            return required_blockchain_difficulty
+            # print(f'new difficulty {required_blockchain_difficulty}')
+            return copy_time_diff 
         return self.difficulty  # if block < 20 return 5
 
     def calculate_cumulative_difficulty(self):

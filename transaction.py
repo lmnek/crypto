@@ -27,16 +27,18 @@ class Output:
         self.amount = amount
 
 class Transaction:
-    def __init__(self, inputs: List[Input], outputs: List[Output]):
+    def __init__(self, inputs: List[Input], outputs: List[Output], index=0):
         self.inputs = inputs
         self.outputs = outputs
         self.signature = None
+        self.index = index # for distinguishing of coinbase txs
 
     def compute_txid(self) -> str:
         # without signatures
         tx_data = {
             'inputs': [{'prev_txid': inp.prev_txid, 'vout': inp.vout} for inp in self.inputs],
-            'outputs': [{'address': out.address, 'amount': out.amount} for out in self.outputs]
+            'outputs': [{'address': out.address, 'amount': out.amount} for out in self.outputs],
+            'index': self.index
         }
         tx_string = json.dumps(tx_data, sort_keys=True)
         return hashlib.sha256(tx_string.encode()).hexdigest()
