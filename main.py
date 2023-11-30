@@ -207,8 +207,9 @@ class BlockchainCLI:
                 print("6. Print UTXOs (unspent)")
                 print("7. Start/stop mining")
                 print("8. Start/stop network logs")
-                print("9. Exit")
-                choice = input("Enter your choice (0-9): ")
+                print("9. Show transaction")
+                print("10. Exit")
+                choice = input("Enter your choice (0-10): ")
 
                 if choice == '0':
                     self.mine_block()
@@ -248,7 +249,9 @@ class BlockchainCLI:
                    self.mine = not self.mine 
                 elif choice == '8':
                    self.blockchain.node.log = not self.blockchain.node.log 
-                elif choice == '9':
+                elif choice =='9':
+                    self.show_transactions()
+                elif choice == '10':
                     self.blockchain.break_mining = True
                     self.mine = False
                     return
