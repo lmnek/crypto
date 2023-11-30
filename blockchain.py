@@ -251,7 +251,7 @@ class Blockchain:
             required_blockchain_difficulty = self.difficulty * average_time_diff // 1200  # 1 min to generate 1 block
             print(f'new difficulty {required_blockchain_difficulty}')
             return required_blockchain_difficulty
-        return self.difficulty  # if block < 20 return 4
+        return self.difficulty  # if block < 20 return 5
 
     def calculate_cumulative_difficulty(self):
         cumulative_difficulty = 0
