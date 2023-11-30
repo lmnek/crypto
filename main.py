@@ -29,11 +29,12 @@ class TestBlockchain(unittest.TestCase):
         blockchain_cli = BlockchainCLI()
         blockchain_cli.blockchain.create_genesis_block(difficulty=4)
 
-        # Add a transaction and mine a block
-        sender = "sender_address"
+        sender_private_key, sender = generate_address()
         recipient = "recipient_address"
+        
+        # Add a transaction and mine a block
         amount = 5.0
-        blockchain_cli.blockchain.add_transaction(sender, recipient, amount)
+        blockchain_cli.blockchain.create_transaction(sender, recipient, amount, sender_private_key)
         blockchain_cli.mine_block()
 
         # Check if the blockchain is valid
@@ -44,10 +45,10 @@ class TestBlockchain(unittest.TestCase):
         blockchain_cli.blockchain.create_genesis_block(difficulty=4)
 
         # Add a transaction and mine a block
-        sender = "sender_address"
+        sender_private_key, sender = generate_address()
         recipient = "recipient_address"
         amount = 5.0
-        blockchain_cli.blockchain.add_transaction(sender, recipient, amount)
+        blockchain_cli.blockchain.create_transaction(sender, recipient, amount, sender_private_key)
         blockchain_cli.mine_block()
 
         # Check if the blockchain is valid
@@ -55,7 +56,7 @@ class TestBlockchain(unittest.TestCase):
 
         # Check if the miner's balance has increased
         blockchain_cli.print_miner_address()
-        self.assertTrue(True)  # Add your own assertion based on your logic
+        self.assertTrue(True)  
 
     
 class BlockchainCLI:
@@ -122,10 +123,11 @@ class BlockchainCLI:
             choice = input("Enter your choice (1-5): ")
 
             if choice == '1':
-                sender = input("Enter sender address: ")
+                sender_private_key, sender = generate_address()
+                print(f'Generated sender address and private key: {sender}')
                 recipient = input("Enter recipient address: ")
                 amount = float(input("Enter transaction amount: "))
-                self.blockchain.add_transaction(sender, recipient, amount)
+                self.blockchain.create_transaction(sender, recipient, amount, sender_private_key)
                 self.mine_block()
             elif choice == '2':
                 self.print_blockchain()
