@@ -68,8 +68,8 @@ class TestBlockchain(unittest.TestCase):
 class BlockchainCLI:
     def __init__(self, port):
         self.storage_manager = StorageManager()
-        self.miner_address = '123'#"miner_address"
         self.miner_private_key, self.miner_address = generate_address()
+        print(f'Miner address: {self.miner_address}')
 
         # decide how to connect to network
         seed_node = input('Start seed node or normal node? (s/n)') == 's'

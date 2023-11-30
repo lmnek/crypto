@@ -51,12 +51,27 @@ class Block:
         block_string = json.dumps(block_data, sort_keys=True)
         return hashlib.sha256(hashlib.sha256(block_string.encode()).digest()).hexdigest()
 
-    def valid_transactions(self) -> bool:
-        for tx in self.transactions:
-            if not tx.verify():
-                return False
-        return True
     
+    def valid_transactions(self, utxos) -> bool:
+        used_utxos = set()
+        for tx in self.transactions:
+            input_value = 0
+            output_value = sum(output.amount for output in tx.outputs)
+
+            for input in tx.inputs:
+                key = (input.prev_txid, input.vout)
+                #  Avoid double-spend
+                if key not in utxos or key in used_utxos:
+                    return False
+
+                input_value += utxos[key].amount
+                used_utxos.add(key)
+
+            if not tx.verify() or \
+                (len(tx.inputs) > 0 and input_value < output_value):
+                return False
+
+        return True
     
 
 class Blockchain:
@@ -89,7 +104,7 @@ class Blockchain:
                 or proof == prev_hash \
                 or block.previous_hash != prev_hash \
                 or block.timestamp >= int(time.time()) \
-                or not block.valid_transactions():
+                or not block.valid_transactions(self.utxos):
                 return False
 
         self.chain.append(block)
@@ -100,8 +115,15 @@ class Blockchain:
         return True 
 
     def receive_transaction(self, tx: Transaction):
-        # NOTE: should do other validation? -> for UTXOs
-        if not tx.verify():
+        # Validate transaction
+        input_value = 0
+        output_value = sum(output.amount for output in tx.outputs)
+        for input in tx.inputs:
+            key = (input.prev_txid, input.vout)
+            if key not in self.utxos:
+                return False
+            input_value += self.utxos[key].amount
+        if not tx.verify() or input_value < output_value:
             return False
         
         # NOTE: this doesnt add to currently mined blockconsider
@@ -153,7 +175,6 @@ class Blockchain:
             if u.address == address:
                 balance += u.amount
         return balance
-
 
     def create_coinbase_transaction(self, recipient, amount):
         outputs = [Output(recipient, amount)]
@@ -228,8 +249,8 @@ class Blockchain:
 
             average_time_diff = total_time_diff / 20
             required_blockchain_difficulty = self.difficulty * average_time_diff // 1200  # 1 min to generate 1 block
+            print(f'new difficulty {required_blockchain_difficulty}')
             return required_blockchain_difficulty
-
         return self.difficulty  # if block < 20 return 4
 
     def calculate_cumulative_difficulty(self):

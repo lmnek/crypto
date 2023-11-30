@@ -57,7 +57,6 @@ class Node:
         sync_thread.daemon = True
         sync_thread.start()
 
-
     
     def close(self):
         self.active = False
@@ -164,8 +163,8 @@ class Node:
                     self.send_to_peer(client, Message('BLOCK', block))
             case "BLOCK":
                 block = jsonpickle.decode(message.data) 
-                # TODO: ??????? NEED TO somehow delete local blockchain up to this block
-                # receive_block will just return False, because it only compares to latest block
+                # TODO: NEED TO somehow delete local blockchain up to this block (+adjust utxos)
+                # receive_block will just return False, because it only compares to latest block (maybe somewhere else too)
                 if self.blockchain.receive_block(block):
                     self.send_to_peer(client, Message('GET_BLOCK', block.index + 1))
                 else:
