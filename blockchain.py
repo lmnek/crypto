@@ -18,7 +18,6 @@ class Block:
         self.merkle_root = self.calculate_merkle_root()
 
     def calculate_merkle_root(self):
-        # Implement your Merkle tree logic here
         if not self.transactions:
             return hashlib.sha256(b"").hexdigest()
 
@@ -94,13 +93,35 @@ class Blockchain:
             if guess[:block.difficulty] == target:
                 return guess
 
-    def add_transaction(self, sender, recipient, amount):
-        # Create a new transaction and add it to unconfirmed transactions
-        self.unconfirmed_transactions.append({
-            'sender': sender,
-            'recipient': recipient,
-            'amount': amount,
-        })
+    # find unspent utxo inputs for transaction
+    def find_inputs(self, sender, amount):
+        # TODO:
+        return 0, []
+
+    def create_coinbase_transaction(self, recipient, amount):
+        outputs = [Output(recipient, amount)]
+        tx = Transaction([], outputs)
+        self.unconfirmed_transactions.append(tx)
+        return tx
+
+    # Create and add UTXO transaction with inputs, outputs 
+    def create_transaction(self, sender, recipient, amount, sender_private_key):
+        total_input_value, inputs = self.find_inputs(sender, amount)
+        outputs = [Output(recipient, amount)]
+
+        # TODO: what if insufficient funds?
+
+        # Handle returning back to the sender
+        change_amount = total_input_value - amount
+        if change_amount > 0:
+            outputs.append(Output(sender, change_amount))
+
+        transaction = Transaction(inputs, outputs)
+        transaction.sign(sender_private_key)
+        if transaction.verify():
+            self.unconfirmed_transactions.append(transaction)
+            return transaction
+        return None
 
     def mine(self, miner_address):
         if not self.unconfirmed_transactions:
@@ -108,12 +129,10 @@ class Blockchain:
             return False
 
         last_block = self.chain[-1]
-        transactions = [Transaction([Input(tx['sender'], tx['recipient'])], [Output(tx['recipient'], tx['amount'])]) for tx in self.unconfirmed_transactions]
-    
         new_block = Block(
             index=last_block.index + 1,
             previous_hash=last_block.hash,
-            transactions=transactions,
+            transactions=self.unconfirmed_transactions,
             timestamp=int(time.time()),
             nonce=0,
             difficulty=self.dynamic_difficulty(), # by average time of last 20 blocks
@@ -122,7 +141,8 @@ class Blockchain:
         proof = self.proof_of_work(new_block)
         self.add_block(new_block, proof)
         self.unconfirmed_transactions = []  # Clear unconfirmed transactions
-        self.add_transaction(sender="0", recipient=miner_address, amount=1)  # Reward the miner - coinbase transaction
+        self.create_coinbase_transaction(miner_address, amount=1)  # Reward the miner - coinbase transaction
+        # TODO: somewhere here, transfer new block to peers?
         return new_block.index
 
     def is_chain_valid(self):
