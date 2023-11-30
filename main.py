@@ -7,6 +7,7 @@ import unittest
 import time
 import jsonpickle
 import json
+from wallet import *
 
 HOST='127.0.0.1'
 PORT=2222
@@ -86,6 +87,7 @@ class BlockchainCLI:
             self.node = Node(HOST, port)
 
         self.blockchain = Blockchain(self.node)
+        self.wallet = Wallet(self.blockchain)
 
         # NEED TO BE CREATED ONLY ONCE -> then shared to other nodes
         if seed_node:
@@ -102,7 +104,6 @@ class BlockchainCLI:
 
     def load_latest_states_from_memory(self, key):
         return self.storage_manager.load_latest_states_from_memory(key)
-    
 
     def print_blockchain(self):
         blockchain_data = {"chain": []}
@@ -136,57 +137,92 @@ class BlockchainCLI:
         print(f"Block #{new_block_index} mined.")
 
     def run_cli(self):
-        while True:
-            print("\nChoose an option:")
-            print("0. Mine a block")
-            print("1. Add a transaction as miner")
-            print("2. Check current blockchain")
-            print("3. Check miner address balance")
-            print("4. Print blockchain data from database")
-            print("5. Print network info")
-            print("6. Print UTXOs (unspent)")
-            print("7. Exit")
-            choice = input("Enter your choice (0-7): ")
-
-            if choice == '0':
-                self.mine_block()
-            elif choice == '1':
-                recipient = input("Enter recipient address: ")
-                amount = float(input("Enter transaction amount: "))
-                self.blockchain.create_transaction(self.miner_address, recipient, amount, self.miner_private_key)
-            elif choice == '2':
-                self.print_blockchain()
-            elif choice == '3':
-                self.print_miner_address()
-            elif choice == '4':
-                self.store_blockchain_data()
-                limit = int(input("Enter the limit for printing blockchain data: "))
-                self.storage_manager.print_blockchain_data(limit)
-            elif choice == '5':
+        mode = input("\nChoose a mode:\n1. Wallet\n2. Developer\nEnter your choice (1-2): ")
+        if mode == '1':
+            while True:
                 print("\nChoose an option:")
-                print("1. Print peer list")
-                choice = input("Enter your choice (1-1): ")
-                match choice:
-                    case '1':
-                        data = list(self.blockchain.node.listen_ports.values())
-                        print(jsonpickle.encode(data, indent=2))
-                    case _:
-                        print("Invalid choice")
-            elif choice == '6':
-                utxos = [
-                    {
-                        'tx_id': key[0],
-                        'vout': key[1],
-                        'address': u.address,
-                        'amount': u.amount
-                    }
-                for key, u in self.blockchain.utxos.items()]
-                print(json.dumps(utxos, indent=2))
+                print("0. Create a new address")
+                print("1. Check balance of all addresses")
+                print("2. Transfer coins")
+                print("3. Print all addresses in the wallet")
+                print("4. Print UTXOs of all addresses")  # New option
+                print("5. Exit")  # Updated option number
+                choice = input("Enter your choice (0-5): ")
 
-            elif choice == '7':
-                return
-            else:
-                print("Invalid choice. Please enter a number between 1 and 5.")
+                if choice == '0':
+                    self.wallet.create_address()
+                elif choice == '1':
+                    address = input('Enter the address to check the balance: ')
+                    balance = self.wallet.get_balance(address)
+                    print(f'Balance of {address}: {balance} coins')
+                elif choice == '2':
+                    sender_address = input("Enter sender address: ")
+                    recipient_address = input("Enter recipient address: ")
+                    amount = float(input("Enter amount to transfer: "))
+                    self.wallet.transfer(sender_address, recipient_address, amount)
+                elif choice == '3':
+                    self.wallet.print_addresses()
+                elif choice == '4':  # New option
+                    self.wallet.print_utxos()
+                elif choice == '5':  # Updated option number
+                    return
+                else:
+                    print("Invalid choice. Please enter a number between 0 and 5.")
+        elif mode == '2':
+            while True:
+                print("\nChoose an option:")
+                print("0. Mine a block")
+                print("1. Add a transaction as miner")
+                print("2. Check current blockchain")
+                print("3. Check miner address balance")
+                print("4. Print blockchain data from database")
+                print("5. Print network info")
+                print("6. Print UTXOs (unspent)")
+                print("7. Exit")
+                choice = input("Enter your choice (0-7): ")
+
+                if choice == '0':
+                    self.mine_block()
+                elif choice == '1':
+                    recipient = input("Enter recipient address: ")
+                    amount = float(input("Enter transaction amount: "))
+                    self.blockchain.create_transaction(self.miner_address, recipient, amount, self.miner_private_key)
+                elif choice == '2':
+                    self.print_blockchain()
+                elif choice == '3':
+                    self.print_miner_address()
+                elif choice == '4':
+                    self.store_blockchain_data()
+                    limit = int(input("Enter the limit for printing blockchain data: "))
+                    self.storage_manager.print_blockchain_data(limit)
+                elif choice == '5':
+                    print("\nChoose an option:")
+                    print("1. Print peer list")
+                    choice = input("Enter your choice (1-1): ")
+                    match choice:
+                        case '1':
+                            data = list(self.blockchain.node.listen_ports.values())
+                            print(jsonpickle.encode(data, indent=2))
+                        case _:
+                            print("Invalid choice")
+                elif choice == '6':
+                    utxos = [
+                        {
+                            'tx_id': key[0],
+                            'vout': key[1],
+                            'address': u.address,
+                            'amount': u.amount
+                        }
+                    for key, u in self.blockchain.utxos.items()]
+                    print(json.dumps(utxos, indent=2))
+
+                elif choice == '7':
+                    return
+                else:
+                    print("Invalid choice. Please enter a number between 0 and 7.")
+        else:
+            print("Invalid mode. Please enter a number between 1 and 2.")
+
 
 if __name__ == '__main__':
     if input('Run tests?(y/n)') == 'y':
@@ -197,3 +233,4 @@ if __name__ == '__main__':
         blockchain_cli.run_cli()
         blockchain_cli.blockchain.disconnect_node()
         storage_manager.close_connection()
+
