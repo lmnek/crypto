@@ -21,7 +21,7 @@ class Message:
         self.data = data
 
     def to_str(self):
-        return json.dumps(self.__dict__).encode()
+        return (json.dumps(self.__dict__) + '\r\n').encode()
     
     def get_id(self):
         return hashlib.sha256(self.to_str()).hexdigest()
@@ -81,11 +81,8 @@ class Node:
 
     # Need to get listening port from peer
     def handle_client_connection_and_port(self, client, address):
-        listening_port = client.recv(1024).decode('utf-8')
-        print('Received port: ' + listening_port)
         send_address = client.getpeername()
         self.peers.add(send_address)
-        self.listen_ports[send_address] = (send_address[0], listening_port)
         self.peer_sockets[send_address] = client
 
         self.handle_client_connection(client, address)
@@ -93,20 +90,28 @@ class Node:
 
     def handle_client_connection(self, client, address):
         print(f"Connected to {address}", flush=True)
-        
- #        self.send_to_peer(client, Message('GET_LATEST_BLOCK', None)) # ask after connecting
- #       self.get_peer_list(client)
 
+        self.send_to_peer(client, Message('GET_LATEST_BLOCK', None)) # ask after connecting
+        self.get_peer_list(client)
+    
         while self.active:
+            data = b''
             try:
-                message_str = receive_complete_message(client)
+                data += receive_complete_message(client)
 
-                # client disconnected
-                if not message_str:
+                # client disconnected?
+                if not data: 
                     break
+                # avoid mixing of packets
+                if not data.endswith(b'\r\n'):
+                    continue
 
-                message = str_to_Message(message_str)
-                self.handle_message(client, message)
+                messages = data.split(b'\r\n')
+                for m_bytes in messages:
+                    if m_bytes == b'':
+                        continue
+                    message = str_to_Message(m_bytes)
+                    self.handle_message(client, message)
             except Exception as e:
                 print(f'Node connection error: {e}')
                 break
@@ -151,6 +156,8 @@ class Node:
 
             case "GET_BLOCK" :
                 idx = int(message.data)
+                if idx == -1:
+                    idx += 1
                 chain = self.blockchain.chain
                 if len(chain) > idx:
                     block = jsonpickle.encode(chain[idx])
@@ -188,9 +195,13 @@ class Node:
                 chain_hashes = [{'index': block.index, 'hash': block.compute_hash()} for block in self.blockchain.chain]
                 data = {'chain_hashes': chain_hashes, 'cum_diff': self.blockchain.calculate_cumulative_difficulty()}
                 self.send_to_peer(client, Message('CONSENSUS_DATA', json.dumps(data)))
-            case "CONSESUS_DATA" :
+            case "CONSENSUS_DATA" :
                 data = json.loads(message.data)
                 self.handle_consensus(client, data['chain_hashes'], data['cum_diff'])
+
+            case "PORT":
+                address = client.getpeername()
+                self.listen_ports[address] = (address[0], int(message.data))
             case _ :
                 print('Unknown message type')
 
@@ -225,7 +236,7 @@ class Node:
         peer_socket.connect(address)
 
         # share listening port
-        peer_socket.sendall(str(self.port).encode('utf-8'))
+        self.send_to_peer(peer_socket, Message("PORT", self.port))
 
         self.peers.add(address)
         self.listen_ports[address] = address
@@ -239,7 +250,7 @@ class Node:
     def send_to_peer(self, peer, message):
         print(f'Sending: {message.m_type}, to {peer.getpeername()}')
         try:
-            peer.sendall(message.to_str())
+            peer.sendall(message.to_str()) 
         except Exception as e:
             print(f"Error sending message to peer: {e}")
 

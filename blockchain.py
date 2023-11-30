@@ -113,6 +113,7 @@ class Blockchain:
         return proof.startswith(target)
 
     def proof_of_work(self, block):
+        self.break_mining = False
         while not self.break_mining:
             block.nonce += 1
             guess = block.compute_hash()

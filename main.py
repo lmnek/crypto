@@ -174,7 +174,7 @@ class BlockchainCLI:
                 choice = input("Enter your choice (1-1): ")
                 match choice:
                     case '1':
-                        data = self.blockchain.node.listen_ports
+                        data = list(self.blockchain.node.listen_ports.values())
                         print(jsonpickle.encode(data, indent=2))
                     case _:
                         print("Invalid choice")
