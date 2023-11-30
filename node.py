@@ -92,8 +92,11 @@ class Node:
 
 
     def handle_client_connection(self, client, address):
-        print(f"Connected to {address}")
-        client.settimeout(5)
+        print(f"Connected to {address}", flush=True)
+        
+ #        self.send_to_peer(client, Message('GET_LATEST_BLOCK', None)) # ask after connecting
+ #       self.get_peer_list(client)
+
         while self.active:
             try:
                 message_str = receive_complete_message(client)
@@ -118,17 +121,13 @@ class Node:
     def periodic_sync(self, interval=600):  # Example interval of 10 minutes
         while self.active:
             print('Started syncronizing')
-            self.sync_blockchain()
+            self.broadcast(Message('GET_LATEST_BLOCK', None))
             if len(self.peers) < self.MAX_CONNETIONS:
                 self.broadcast(Message('GET_PEERS', None))
             time.sleep(interval)
 
-    def sync_blockchain(self):
-        self.broadcast(Message('GET_LATEST_BLOCK', None))
-        
-
     def handle_message(self, client, message: Message):
-        print(f'Received: {message.m_type}, from {client.getpeername()}')
+        print(f'Received: {message.m_type}, from {client.getpeername()}', flush=True)
 
         if message.broadcast and message.get_id() in self.processed_messages:
             print('-> already processed message')
@@ -157,29 +156,41 @@ class Node:
                     block = jsonpickle.encode(chain[idx])
                     self.send_to_peer(client, Message('BLOCK', block))
             case "BLOCK":
-                block = jsonpickle.decode(message.data)
+                block = jsonpickle.decode(message.data) 
+                # TODO: ??????? NEED TO somehow delete local blockchain up to this block
+                # receive_block will just return False, because it only compares to latest block
                 if self.blockchain.receive_block(block):
                     self.send_to_peer(client, Message('GET_BLOCK', block.index + 1))
                 else:
-                    pass # ????
+                    self.send_to_peer(client, Message('GET_CONSENSUS_DATA', None))
 
             case "GET_LATEST_BLOCK" :
                 block = self.blockchain.latest_block()
                 m = Message('LATEST_BLOCK', jsonpickle.encode(block))
                 self.send_to_peer(client, m)
             case "LATEST_BLOCK" :
-                received_block = message.data
-                local_block = self.blockchain.get_latest_block()
+                received_block = jsonpickle.decode(message.data)
+                if not received_block:
+                    return
 
-                # TODO: handle forks
-                if received_block.index > local_block.index:
-                    self.send_to_peer(client, Message('GET_BLOCK', local_block.index))
+                local_block = self.blockchain.latest_block()
+                local_idx = local_block.index if local_block else -1
 
-            # TODO: handle forks with highest cumulative difficulty
+                if received_block.index > local_idx:
+                    self.send_to_peer(client, Message('GET_BLOCK', local_idx))
+                if (received_block.index == local_idx \
+                        and received_block.compute_hash() != local_block.compute_hash()) \
+                    or received_block.index < local_idx:
+                    self.send_to_peer(client, Message('GET_CONSENSUS_DATA', None))
+
+            # Fork handling with cumulative difficulty of chain 
             case "GET_CONSENSUS_DATA" :
-                pass
+                chain_hashes = [{'index': block.index, 'hash': block.compute_hash()} for block in self.blockchain.chain]
+                data = {'chain_hashes': chain_hashes, 'cum_diff': self.blockchain.calculate_cumulative_difficulty()}
+                self.send_to_peer(client, Message('CONSENSUS_DATA', json.dumps(data)))
             case "CONSESUS_DATA" :
-                pass
+                data = json.loads(message.data)
+                self.handle_consensus(client, data['chain_hashes'], data['cum_diff'])
             case _ :
                 print('Unknown message type')
 
@@ -187,10 +198,28 @@ class Node:
         # if message.broadcast and not message.get_id() in self.processed_messages:
         #    self.broadcast(message)
 
+    def handle_consensus(self, client, chain_hashes, other_cum_diff):
+        cum_diff = self.blockchain.calculate_cumulative_difficulty()
+        last_common_block_idx = self.last_common_block(chain_hashes)
+        if cum_diff > other_cum_diff:
+            # we win fork -> they need to sync
+            block = jsonpickle.encode(self.blockchain.chain[last_common_block_idx + 1])
+            self.send_to_peer(client, Message('BLOCK', block))
+        elif cum_diff < other_cum_diff:
+            # peer wins fork -> we need to sync
+            self.send_to_peer(client, Message('GET_BLOCK', last_common_block_idx + 1))
+
+    def last_common_block(self, chain_hashes):
+        min_len = min(len(chain_hashes), len(self.blockchain.chain))
+        for i in range(min_len - 1):
+            if chain_hashes[i]['hash'] != self.blockchain.chain[i].compute_hash():
+                return i - 1
+        return min_len 
+
+    
 
     def connect_to_peer(self, peer_host, peer_port):
         peer_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        peer_socket.settimeout(10)
         peer_socket.setblocking(True)
         address = (peer_host, peer_port)
         peer_socket.connect(address)
@@ -204,6 +233,7 @@ class Node:
         print(f"Connected to peer {peer_host}:{peer_port}")
 
         threading.Thread(target=self.handle_client_connection, args=(peer_socket, address)).start()
+
         return peer_socket
 
     def send_to_peer(self, peer, message):
@@ -219,7 +249,7 @@ class Node:
         for peer in self.peers:
             peer_socket = self.peer_sockets.get(peer)
             if peer_socket:
-                self.send_to_peer(peer, message)
+                self.send_to_peer(peer_socket, message)
 
     def new_block(self, block):
         json_str = jsonpickle.encode(block)
@@ -233,9 +263,6 @@ class Node:
         self.send_to_peer(client, Message("GET_PEERS", None))
 
     def handle_peer_list(self, peer_list):
-        print(peer_list)
-        print(self.peers)
-        print(self.listen_ports.values())
         for peer in peer_list:
             peer_tuple = (peer[0], int(peer[1]))
             if peer_tuple not in self.listen_ports.values() and peer_tuple != (self.host, self.port): 
@@ -245,7 +272,6 @@ class Node:
                     continue
 
                 try:
-                    # TODO: querry for the latest block
                     self.connect_to_peer(*peer_tuple)
                 except ConnectionError:
                     print(f'Failed to connect to: {peer_tuple}')
@@ -273,8 +299,6 @@ if __name__ == "__main__":
     if input('A seed node? (y/n)') == 'y':
         node = Node(*SEED_NODES[0])
         Event().wait() # break on keyboard input
-
-    # TODO: run blockchain alongside
 
     port = int(input('Port number: '))
     node = Node('127.0.0.1', port)

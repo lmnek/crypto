@@ -63,7 +63,7 @@ class Blockchain:
     def __init__(self, node):
         self.chain = deque()
         self.unconfirmed_transactions = []
-        self.blockchain_difficulty = 4
+        self.difficulty = 5 
         self.break_mining = False
 
         self.node = node
@@ -76,28 +76,20 @@ class Blockchain:
         self.proof_of_work(genesis_block)
         self.chain.append(genesis_block)
 
-    def add_mined_block(self, block, proof):
-        previous_hash = self.chain[-1].hash
-        if previous_hash != block.previous_hash:
-            return False
-
-        # TODO: update unspent UTXO list memory
-        if not self.is_valid_proof(block, proof):
-            return False
-
-        return True
-
     # receive block from a peer
     def receive_block(self, block: Block):
-        proof = block.compute_hash()
-        prev_hash = self.chain[-1].compute_hash()         
-        # WARNING: additional validation may be required (e.g. transactions)
-        if not self.is_valid_proof(self, proof) \
-            or proof == prev_hash \
-            or block.previous_hash != prev_hash \
-            or block.timestamp >= int(time.time()) \
-            or not block.valid_transactions():
-            return False
+        # skip if genesis block
+        if len(self.chain) != 0:
+            proof = block.compute_hash()
+            last_block = self.latest_block()
+            prev_hash = last_block.compute_hash()         
+            # WARNING: additional validation may be required (e.g. transactions)
+            if not self.is_valid_proof(self, proof) \
+                or proof == prev_hash \
+                or block.previous_hash != prev_hash \
+                or block.timestamp >= int(time.time()) \
+                or not block.valid_transactions():
+                return False
 
         self.chain.append(block)
         self.remove_confirmed_transactions(block.transactions)
@@ -204,14 +196,22 @@ class Blockchain:
                 total_time_diff += time_diff
 
             average_time_diff = total_time_diff / 20
-            required_blockchain_difficulty = self.blockchain_difficulty * average_time_diff // 1200  # 1 min to generate 1 block
+            required_blockchain_difficulty = self.difficulty * average_time_diff // 1200  # 1 min to generate 1 block
             return required_blockchain_difficulty
 
-        return self.blockchain_difficulty  # if block < 20 return 4
+        return self.difficulty  # if block < 20 return 4
+
+    def calculate_cumulative_difficulty(self):
+        cumulative_difficulty = 0
+        for block in self.chain:
+            cumulative_difficulty += 2 ** block.difficulty
+        return cumulative_difficulty
 
     def disconnect_node(self):
         self.node.close()
 
     def latest_block(self):
+        if len(self.chain) == 0:
+            return None
         return self.chain[-1]
 

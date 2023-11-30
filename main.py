@@ -6,7 +6,12 @@ from storage import StorageManager
 from node import Node
 import unittest
 import time
+import jsonpickle
 import json
+
+HOST='127.0.0.1'
+PORT=2222
+SEED_NODES = [('127.0.0.1', 6005)]
 
 # Test suite
 #unittest.main()
@@ -23,7 +28,7 @@ class TestBlockchain(unittest.TestCase):
         self.assertTrue(transaction.verify())
 
     def test_blockchain_creation_and_mining(self):
-        blockchain_cli = BlockchainCLI(HOST, PORT)
+        blockchain_cli = BlockchainCLI(PORT)
         blockchain_cli.blockchain.create_genesis_block(difficulty=4)
 
         sender_private_key, sender = generate_address()
@@ -40,7 +45,7 @@ class TestBlockchain(unittest.TestCase):
         blockchain_cli.blockchain.disconnect_node()
 
     def test_mining_with_transactions_and_balance(self):
-        blockchain_cli = BlockchainCLI(HOST, PORT + 1)
+        blockchain_cli = BlockchainCLI(PORT + 1)
         blockchain_cli.blockchain.create_genesis_block(difficulty=4)
 
         # Add a transaction and mine a block
@@ -59,16 +64,32 @@ class TestBlockchain(unittest.TestCase):
 
         blockchain_cli.blockchain.disconnect_node()
 
-HOST='127.0.0.1'
-PORT=5001
-SEED_NODES = [('127.0.0.1', 6005)]
     
 class BlockchainCLI:
-    def __init__(self, host, port):
+    def __init__(self, port):
         self.storage_manager = StorageManager()
-        self.node = Node(host, port) # start seed node
-        self.blockchain = Blockchain(self.node)
         self.miner_address = '123'#"miner_address"
+
+        # decide how to connect to network
+        seed_node = input('Start seed node or normal node? (s/n)') == 's'
+        if not port:
+            if seed_node:
+                self.node = Node(*SEED_NODES[0]) # start seed node
+            else:
+                self.node = Node(HOST, int(input('Port: ')))
+                for seed in SEED_NODES:
+                    try:
+                        seed_peer = self.node.connect_to_peer(*seed)
+                    except Exception as e:
+                        print(f'Error connecting to seed node: {e}')
+        else:
+            self.node = Node(HOST, port)
+
+        self.blockchain = Blockchain(self.node)
+
+        # NEED TO BE CREATED ONLY ONCE -> then shared to other nodes
+        if seed_node:
+            self.blockchain.create_genesis_block(difficulty=4) # Set the initial difficulty for the genesis block
 
     def store_blockchain_data(self):
         self.storage_manager.store_blockchain_data(self.blockchain)
@@ -128,8 +149,8 @@ class BlockchainCLI:
             print("2. Check current blockchain")
             print("3. Check miner address balance")
             print("4. Print blockchain data from database")
-            print("5. Exit")
-            print('6. Exit + run tests')
+            print("5. Print network info")
+            print("6. Exit")
             choice = input("Enter your choice (1-6): ")
 
             if choice == '1':
@@ -147,20 +168,28 @@ class BlockchainCLI:
                 self.store_blockchain_data()
                 limit = int(input("Enter the limit for printing blockchain data: "))
                 self.storage_manager.print_blockchain_data(limit)
-
             elif choice == '5':
-                return
+                print("\nChoose an option:")
+                print("1. Print peer list")
+                choice = input("Enter your choice (1-1): ")
+                match choice:
+                    case '1':
+                        data = self.blockchain.node.listen_ports
+                        print(jsonpickle.encode(data, indent=2))
+                    case _:
+                        print("Invalid choice")
+
             elif choice == '6':
-                unittest.main()
                 return
             else:
                 print("Invalid choice. Please enter a number between 1 and 5.")
 
 if __name__ == '__main__':
-    #unittest.main()
-    storage_manager = StorageManager()
-    blockchain_cli = BlockchainCLI(*SEED_NODES[0])
-    blockchain_cli.blockchain.create_genesis_block(difficulty=4)# Set the initial difficulty for the genesis block
-    blockchain_cli.run_cli()
-    blockchain_cli.blockchain.disconnect_node()
-    storage_manager.close_connection()
+    if input('Run tests?(y/n)') == 'y':
+        unittest.main()
+    else:
+        storage_manager = StorageManager()
+        blockchain_cli = BlockchainCLI(None)
+        blockchain_cli.run_cli()
+        blockchain_cli.blockchain.disconnect_node()
+        storage_manager.close_connection()
