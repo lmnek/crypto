@@ -2,6 +2,7 @@ import sys
 from blockchain import Blockchain
 from transaction import Input, Output, Transaction
 from functions import *
+from storage import StorageManager
 import unittest
 import time
 import json
@@ -59,8 +60,22 @@ class TestBlockchain(unittest.TestCase):
     
 class BlockchainCLI:
     def __init__(self):
+        self.storage_manager = StorageManager()
         self.blockchain = Blockchain()
         self.miner_address = '123'#"miner_address"
+
+    def store_blockchain_data(self):
+        self.storage_manager.store_blockchain_data(self.blockchain)
+
+    def load_blockchain_data(self):
+        return self.storage_manager.load_blockchain_data()
+
+    def store_latest_states_in_memory(self, key, value):
+        self.storage_manager.store_latest_states_in_memory(key, value)
+
+    def load_latest_states_from_memory(self, key):
+        return self.storage_manager.load_latest_states_from_memory(key)
+    
 
     def print_blockchain(self):
         blockchain_data = {"chain": []}
@@ -101,9 +116,10 @@ class BlockchainCLI:
             print("1. Mine a block with a transaction")
             print("2. Check current blockchain")
             print("3. Check miner address balance")
-            print("4. Exit")
+            print("4. Print blockchain data from database")
+            print("5. Exit")
 
-            choice = input("Enter your choice (1-4): ")
+            choice = input("Enter your choice (1-5): ")
 
             if choice == '1':
                 sender = input("Enter sender address: ")
@@ -116,12 +132,19 @@ class BlockchainCLI:
             elif choice == '3':
                 self.print_miner_address()
             elif choice == '4':
+                self.store_blockchain_data()
+                limit = int(input("Enter the limit for printing blockchain data: "))
+                self.storage_manager.print_blockchain_data(limit)
+
+            elif choice == '5':
                 sys.exit("Exiting the program.")
             else:
-                print("Invalid choice. Please enter a number between 1 and 4.")
+                print("Invalid choice. Please enter a number between 1 and 5.")
 
 if __name__ == '__main__':
     #unittest.main()
+    storage_manager = StorageManager()
     blockchain_cli = BlockchainCLI()
     blockchain_cli.blockchain.create_genesis_block(difficulty=4)# Set the initial difficulty for the genesis block
     blockchain_cli.run_cli()
+    storage_manager.close_connection()
