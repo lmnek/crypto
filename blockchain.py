@@ -65,6 +65,7 @@ class Blockchain:
         self.unconfirmed_transactions = []
         self.difficulty = 5 
         self.break_mining = False
+        self.utxos = {} # store unspent UTXOs, key is (txid, vout) -> TODO: redis
 
         self.node = node
         node.set_blockchain(self)
@@ -78,7 +79,7 @@ class Blockchain:
 
     # receive block from a peer
     def receive_block(self, block: Block):
-        # skip if genesis block
+        # skip if fetching genesis block
         if len(self.chain) != 0:
             proof = block.compute_hash()
             last_block = self.latest_block()
@@ -92,13 +93,14 @@ class Blockchain:
                 return False
 
         self.chain.append(block)
+        self.update_utxos(block)
         self.remove_confirmed_transactions(block.transactions)
         self.break_mining = True
 
         return True 
 
     def receive_transaction(self, tx: Transaction):
-        # NOTE: should do other validation?
+        # NOTE: should do other validation? -> for UTXOs
         if not tx.verify():
             return False
         
@@ -123,13 +125,40 @@ class Blockchain:
 
     # find unspent utxo inputs for transaction
     def find_inputs(self, sender, amount):
-        # TODO:
-        return amount, []
+        total_input_value = 0
+        inputs = []
+        for key, o in self.utxos.items():
+            if o.address == sender:
+                total_input_value += o.amount
+                inputs.append(Input(key[0], key[1]))
+                if total_input_value >= amount:
+                    break
+        return (total_input_value, inputs)
+
+    def update_utxos(self, new_block: Block):
+        for tx in new_block.transactions:
+            # remove spent UTXOs
+            for input in tx.inputs:
+                key = (input.prev_txid, input.vout)
+                if key in self.utxos:
+                    del self.utxos[key]
+            # add new outputs
+            tx_id = tx.compute_txid()
+            for vout, output in enumerate(tx.outputs):
+                self.utxos[(tx_id, vout)] = output
+
+    def get_balance(self, address):
+        balance = 0
+        for u  in self.utxos.values():
+            if u.address == address:
+                balance += u.amount
+        return balance
+
 
     def create_coinbase_transaction(self, recipient, amount):
         outputs = [Output(recipient, amount)]
         tx = Transaction([], outputs)
-        self.unconfirmed_transactions.append(tx)
+        self.unconfirmed_transactions.insert(0, tx) # first
         return tx
 
     # Create and add UTXO transaction with inputs, outputs 
@@ -137,12 +166,17 @@ class Blockchain:
         total_input_value, inputs = self.find_inputs(sender, amount)
         outputs = [Output(recipient, amount)]
 
-        # TODO: what if insufficient funds?
+        # Insufficient funds
+        if total_input_value < amount:
+            print(f'Insufficient funds: {total_input_value} instead of {amount}')
+            return None
 
         # Handle returning back to the sender
         change_amount = total_input_value - amount
         if change_amount > 0:
             outputs.append(Output(sender, change_amount))
+
+        # NOTE: potentially handle transaction fees
 
         transaction = Transaction(inputs, outputs)
         transaction.sign(sender_private_key)
@@ -158,11 +192,8 @@ class Blockchain:
         self.unconfirmed_transactions = [tx for tx in self.unconfirmed_transactions if tx.compute_txid() not in confirmed_txids]
 
     def mine(self, miner_address):
-        if not self.unconfirmed_transactions:
-            print("No transactions to mine.")
-            return False
-
         last_block = self.chain[-1]
+        self.create_coinbase_transaction(miner_address, amount=1)  # Reward the miner
         new_block = Block(
             index=last_block.index + 1,
             previous_hash=last_block.compute_hash(),
@@ -175,10 +206,9 @@ class Blockchain:
 
         if proof:
             self.chain.append(new_block) # add mined block
+            self.update_utxos(new_block)
             self.remove_confirmed_transactions(new_block.transactions)
-            self.create_coinbase_transaction(miner_address, amount=1)  # Reward the miner
             self.node.new_block(new_block) # transmit block to peers
-
         return new_block.index
 
     def is_chain_valid(self):

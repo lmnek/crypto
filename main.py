@@ -1,4 +1,3 @@
-import sys
 from blockchain import Blockchain
 from transaction import Input, Output, Transaction
 from functions import *
@@ -69,6 +68,7 @@ class BlockchainCLI:
     def __init__(self, port):
         self.storage_manager = StorageManager()
         self.miner_address = '123'#"miner_address"
+        self.miner_private_key, self.miner_address = generate_address()
 
         # decide how to connect to network
         seed_node = input('Start seed node or normal node? (s/n)') == 's'
@@ -127,15 +127,8 @@ class BlockchainCLI:
         print(json.dumps(blockchain_data, indent=2))
 
     def print_miner_address(self):
-        balance = 0
         print(f"Balance for {self.miner_address}:")
-        for block in self.blockchain.chain:
-            for transaction in block.transactions:
-                for output in transaction.outputs:
-                    if output.address == self.miner_address:
-                        balance += output.amount
-
-        print(f"{balance} coins\n")
+        print(f"{self.blockchain.get_balance(self.miner_address)} coins\n")
 
     def mine_block(self):
         print("Mining new block...")
@@ -145,21 +138,22 @@ class BlockchainCLI:
     def run_cli(self):
         while True:
             print("\nChoose an option:")
-            print("1. Mine a block with a transaction")
+            print("0. Mine a block")
+            print("1. Add a transaction as miner")
             print("2. Check current blockchain")
             print("3. Check miner address balance")
             print("4. Print blockchain data from database")
             print("5. Print network info")
-            print("6. Exit")
-            choice = input("Enter your choice (1-6): ")
+            print("6. Print UTXOs (unspent)")
+            print("7. Exit")
+            choice = input("Enter your choice (0-7): ")
 
-            if choice == '1':
-                sender_private_key, sender = generate_address()
-                print(f'Generated sender address and private key: {sender}')
+            if choice == '0':
+                self.mine_block()
+            elif choice == '1':
                 recipient = input("Enter recipient address: ")
                 amount = float(input("Enter transaction amount: "))
-                self.blockchain.create_transaction(sender, recipient, amount, sender_private_key)
-                self.mine_block()
+                self.blockchain.create_transaction(self.miner_address, recipient, amount, self.miner_private_key)
             elif choice == '2':
                 self.print_blockchain()
             elif choice == '3':
@@ -178,8 +172,18 @@ class BlockchainCLI:
                         print(jsonpickle.encode(data, indent=2))
                     case _:
                         print("Invalid choice")
-
             elif choice == '6':
+                utxos = [
+                    {
+                        'tx_id': key[0],
+                        'vout': key[1],
+                        'address': u.address,
+                        'amount': u.amount
+                    }
+                for key, u in self.blockchain.utxos.items()]
+                print(json.dumps(utxos, indent=2))
+
+            elif choice == '7':
                 return
             else:
                 print("Invalid choice. Please enter a number between 1 and 5.")
