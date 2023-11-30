@@ -96,7 +96,7 @@ class Blockchain:
     # find unspent utxo inputs for transaction
     def find_inputs(self, sender, amount):
         # TODO:
-        return 0, []
+        return amount, []
 
     def create_coinbase_transaction(self, recipient, amount):
         outputs = [Output(recipient, amount)]

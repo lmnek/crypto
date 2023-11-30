@@ -15,9 +15,6 @@ class TestBlockchain(unittest.TestCase):
         private_key, address = generate_address()
         public_key = derive_public_key(bytes.fromhex(private_key))
 
-        print('private key: ' + private_key)
-        print('address: ' + address)
-
         input = Input("previous_txid", 0)
         output = Output(address, 10)
         transaction = Transaction([input], [output])
@@ -81,10 +78,15 @@ class BlockchainCLI:
     def print_blockchain(self):
         blockchain_data = {"chain": []}
         for block in self.blockchain.chain:
+            txs_data = 'Genesis block' if not block.transactions else [{
+                'inputs': [{'prev_tx': i.prev_txid, 'vout': i.vout} for i in tx.inputs],
+                'outputs': [{'address': o.address, 'amount': o.amount} for o in tx.outputs]
+            } for tx in block.transactions]
+
             block_data = {
                 "index": block.index,
                 "timestamp": time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(block.timestamp)),
-                "data": {"amount": block.transactions[0].outputs[0].amount} if block.transactions else "Genesis block of simple chain",
+                "data": txs_data,
                 "previousHash": block.previous_hash,
                 "merkleRoot": block.merkle_root,
                 "hash": block.compute_hash(),
@@ -119,8 +121,8 @@ class BlockchainCLI:
             print("3. Check miner address balance")
             print("4. Print blockchain data from database")
             print("5. Exit")
-
-            choice = input("Enter your choice (1-5): ")
+            print('6. Exit + run tests')
+            choice = input("Enter your choice (1-6): ")
 
             if choice == '1':
                 sender_private_key, sender = generate_address()
@@ -140,6 +142,9 @@ class BlockchainCLI:
 
             elif choice == '5':
                 sys.exit("Exiting the program.")
+            elif choice == '6':
+                unittest.main()
+                sys.exit('Exiting the program.')
             else:
                 print("Invalid choice. Please enter a number between 1 and 5.")
 
