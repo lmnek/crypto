@@ -3,10 +3,10 @@ from blockchain import Blockchain
 from transaction import Input, Output, Transaction
 from functions import *
 from storage import StorageManager
+from node import Node
 import unittest
 import time
 import json
-import hashlib
 
 # Test suite
 #unittest.main()
@@ -23,7 +23,7 @@ class TestBlockchain(unittest.TestCase):
         self.assertTrue(transaction.verify())
 
     def test_blockchain_creation_and_mining(self):
-        blockchain_cli = BlockchainCLI()
+        blockchain_cli = BlockchainCLI(HOST, PORT)
         blockchain_cli.blockchain.create_genesis_block(difficulty=4)
 
         sender_private_key, sender = generate_address()
@@ -37,8 +37,10 @@ class TestBlockchain(unittest.TestCase):
         # Check if the blockchain is valid
         self.assertTrue(blockchain_cli.blockchain.is_chain_valid())
 
+        blockchain_cli.blockchain.disconnect_node()
+
     def test_mining_with_transactions_and_balance(self):
-        blockchain_cli = BlockchainCLI()
+        blockchain_cli = BlockchainCLI(HOST, PORT + 1)
         blockchain_cli.blockchain.create_genesis_block(difficulty=4)
 
         # Add a transaction and mine a block
@@ -55,11 +57,17 @@ class TestBlockchain(unittest.TestCase):
         blockchain_cli.print_miner_address()
         self.assertTrue(True)  
 
+        blockchain_cli.blockchain.disconnect_node()
+
+HOST='127.0.0.1'
+PORT=5001
+SEED_NODES = [('127.0.0.1', 6005)]
     
 class BlockchainCLI:
-    def __init__(self):
+    def __init__(self, host, port):
         self.storage_manager = StorageManager()
-        self.blockchain = Blockchain()
+        self.node = Node(host, port) # start seed node
+        self.blockchain = Blockchain(self.node)
         self.miner_address = '123'#"miner_address"
 
     def store_blockchain_data(self):
@@ -141,17 +149,18 @@ class BlockchainCLI:
                 self.storage_manager.print_blockchain_data(limit)
 
             elif choice == '5':
-                sys.exit("Exiting the program.")
+                return
             elif choice == '6':
                 unittest.main()
-                sys.exit('Exiting the program.')
+                return
             else:
                 print("Invalid choice. Please enter a number between 1 and 5.")
 
 if __name__ == '__main__':
     #unittest.main()
     storage_manager = StorageManager()
-    blockchain_cli = BlockchainCLI()
+    blockchain_cli = BlockchainCLI(*SEED_NODES[0])
     blockchain_cli.blockchain.create_genesis_block(difficulty=4)# Set the initial difficulty for the genesis block
     blockchain_cli.run_cli()
+    blockchain_cli.blockchain.disconnect_node()
     storage_manager.close_connection()
