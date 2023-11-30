@@ -19,7 +19,6 @@ class StorageManager:
         self.mongo_client = MongoClient(MONGODB_URI)
         self.mongo_db = self.mongo_client[MONGODB_DB_NAME]
         
-        # Assuming you have a 'blockchain_data' collection in your database
         self.transactions_collection = self.mongo_db.transactions
         self.blockchain_collection = self.mongo_db.blockchain_data
         
