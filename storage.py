@@ -24,9 +24,6 @@ class StorageManager:
         
         # Initialize Redis client
         self.redis_client = redis.StrictRedis(host=REDIS_HOST, port=REDIS_PORT, decode_responses=True)
-    def store_transaction(self, transaction):
-        transaction_data = transaction.serialize()
-        self.transactions_collection.insert_one(transaction_data)
 
     def load_transaction(self, transaction_id):
         result = self.transactions_collection.find_one({"_id": transaction_id})
@@ -59,6 +56,7 @@ class StorageManager:
         return all_transactions
     
     def store_transaction(self, transaction):
+        print('storing tx')
         # Serialize inputs
         inputs_data = [{"prev_txid": inp.prev_txid, "vout": inp.vout, "signature": inp.signature, "public_key": inp.public_key} for inp in transaction.inputs]
 
@@ -75,6 +73,7 @@ class StorageManager:
         # Store or update in MongoDB
         self.transactions_collection.insert_one(transaction_data)
         print("Transaction stored successfully.")
+
     def store_blockchain_data(self, blockchain):
         blockchain_data = {"chain": []}
 
@@ -94,10 +93,14 @@ class StorageManager:
 
         # Store subsequent blocks
         for block in islice(blockchain.chain, 1, None):
+            data = [{
+                'inputs': [vars(i) for i in tx.inputs],
+                'outputs': [vars(o) for o in tx.outputs]
+            } for tx in block.transactions]
             block_data = {
                 "index": block.index,
                 "timestamp": time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(block.timestamp)),
-                "data": [{"inputs": inp, "outputs": outp} for inp, outp in zip(block.transactions[0].inputs, block.transactions[0].outputs)] if block.transactions else "Genesis block of simple chain",
+                "data": data,
                 "previousHash": block.previous_hash,
                 "merkleRoot": block.merkle_root,
                 "hash": block.compute_hash(),
@@ -118,7 +121,7 @@ class StorageManager:
         result = self.mongo_db.blockchain_data.find_one({})
         if result:
             chain_data = result["chain"]
-            blockchain = Blockchain() 
+            blockchain = Blockchain(None) #FIX: pass node
 
             for block_data in chain_data:
                 index = block_data["index"]
