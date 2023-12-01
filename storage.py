@@ -131,7 +131,6 @@ class StorageManager:
                 transactions_data = block_data["data"]
                 transactions = []
                 for transaction_data in transactions_data:
-                    # Assuming you have a Transaction class with appropriate attributes
                     inputs = transaction_data["inputs"]
                     outputs = transaction_data["outputs"]
                     transaction = Transaction(inputs, outputs)
