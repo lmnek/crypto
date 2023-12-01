@@ -244,17 +244,13 @@ class Blockchain:
 
     def dynamic_difficulty(self):
         if len(self.chain) > 20:
-            total_time_diff = 0
-            copy_time_diff = self.difficulty
-            for i in range(len(self.chain) - 1, len(self.chain) - 21, -1):
-                time_diff = self.chain[i].timestamp - self.chain[i - 1].timestamp
-                total_time_diff += time_diff
-
-            average_time_diff = total_time_diff / 20
-            required_blockchain_difficulty = self.difficulty * average_time_diff // 1200  # 1 min to generate 1 block
+            total_time_diff = self.chain[i].timestamp - self.chain[i - 20].timestamp
+            old_difficulty = self.chain[i].difficulty
+            new_difficulty = old_difficulty * 1200 // total_time_diff
+            # lecture material is "old_difficulty * total_time_diff // estimated time(e.g.1200)" but it probably wrong
             # print(f'new difficulty {required_blockchain_difficulty}')
-            return copy_time_diff 
-        return self.difficulty  # if block < 20 return 5
+            return new_difficulty # 1 block will be generated in 1 min
+        return self.difficulty  # if number of block < 20 return 5
 
     def calculate_cumulative_difficulty(self):
         cumulative_difficulty = 0
