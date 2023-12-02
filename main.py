@@ -83,6 +83,9 @@ class BlockchainCLI:
                         print(f'Error connecting to seed node: {e}')
         else:
             self.node = Node(HOST, port)
+        
+        # Load blockchain data from MongoDB
+        self.blockchain = self.storage_manager.load_blockchain_data()
 
         self.blockchain = Blockchain(self.node)
         self.wallet = Wallet(self.blockchain)
@@ -254,9 +257,11 @@ class BlockchainCLI:
                 elif choice == '10':
                     self.blockchain.break_mining = True
                     self.mine = False
+                    # Save blockchain data to MongoDB before exiting
+                    self.storage_manager.store_blockchain_data(self.blockchain)
                     return
                 else:
-                    print("Invalid choice. Please enter a number between 0 and 7.")
+                    print("Invalid choice. Please enter a number between 0 and 10.")
         else:
             print("Invalid mode. Please enter a number between 1 and 2.")
 
