@@ -259,6 +259,9 @@ class BlockchainCLI:
                     self.mine = False
                     # Save blockchain data to MongoDB before exiting
                     self.storage_manager.store_blockchain_data(self.blockchain)
+                    # Save UTXOs to Redis before exiting
+                    utxos_json = json.dumps(self.blockchain.utxos)
+                    self.storage_manager.store_latest_states_in_memory('utxos', utxos_json)
                     return
                 else:
                     print("Invalid choice. Please enter a number between 0 and 10.")
@@ -272,6 +275,10 @@ if __name__ == '__main__':
     else:
         storage_manager = StorageManager()
         blockchain_cli = BlockchainCLI(None)
+        # Load UTXOs from Redis
+        utxos_json = blockchain_cli.storage_manager.load_latest_states_from_memory('utxos')
+        if utxos_json is not None:
+            blockchain_cli.blockchain.utxos = json.loads(utxos_json)
         blockchain_cli.run_cli()
         blockchain_cli.blockchain.disconnect_node()
         storage_manager.close_connection()
