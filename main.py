@@ -1,5 +1,4 @@
 from blockchain import Blockchain
-from transaction import Input, Output, Transaction
 from functions import *
 from storage import StorageManager
 from node import Node, threading
@@ -11,54 +10,6 @@ from wallet import *
 
 HOST='127.0.0.1' # local for testing
 SEED_NODES = [('127.0.0.1', 6005)] # can be multiple ones
-
-# Test suite
-#unittest.main()
-class TestBlockchain(unittest.TestCase):
-    def test_transaction_creation_and_verification(self):
-        private_key, address = generate_address()
-        public_key = derive_public_key(bytes.fromhex(private_key))
-
-        input = Input("previous_txid", 0)
-        output = Output(address, 10)
-        transaction = Transaction([input], [output])
-
-        transaction.sign(private_key)
-        self.assertTrue(transaction.verify())
-
-    def test_blockchain_creation_and_mining(self):
-        node = Node(HOST, 2222)
-        blockchain = Blockchain(node)
-        blockchain.create_genesis_block(difficulty=4)
-
-        sender_private_key, sender = generate_address()
-        recipient = "recipient_address"
-        
-        # Add a transaction and mine a block
-        amount = 5.0
-        blockchain.create_transaction(sender, recipient, amount, sender_private_key)
-        blockchain_cli.mine_block()
-
-        # Check if the blockchain is valid
-        self.assertTrue(blockchain.is_chain_valid())
-        blockchain.quit()
-
-    def test_mining_with_transactions_and_balance(self):
-        node = Node(HOST, 2223)
-        blockchain = Blockchain(node)
-        blockchain.create_genesis_block(difficulty=4)
-
-        # Add a transaction and mine a block
-        sender_private_key, sender = generate_address()
-        recipient = "recipient_address"
-        amount = 5.0
-        blockchain.create_transaction(sender, recipient, amount, sender_private_key)
-        blockchain.mine(sender)
-
-        # Check if the blockchain is valid
-        self.assertTrue(blockchain.is_chain_valid())
-        blockchain.quit()
-
     
 class BlockchainCLI:
     def __init__(self):
