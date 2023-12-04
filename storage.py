@@ -28,7 +28,22 @@ class StorageManager:
     def load_transaction(self, transaction_id):
         result = self.transactions_collection.find_one({"_id": transaction_id})
         if result:
-            return Transaction.deserialize(result)
+            inputs_data = result.get("inputs", [])
+            outputs_data = result.get("outputs", [])
+
+            # Deserialize inputs
+            inputs = [Input(inp["prev_txid"], inp["vout"]) for inp in inputs_data]
+            for i, inp in enumerate(inputs):
+                inp.signature = inputs_data[i].get("signature")
+                inp.public_key = inputs_data[i].get("public_key")
+
+            # Deserialize outputs
+            outputs = [Output(out["address"], out["amount"]) for out in outputs_data]
+
+            # Create a Transaction object
+            transaction = Transaction(inputs, outputs)
+            transaction.signature = result.get("signature")
+
         return None
     
     def load_all_transactions(self):
@@ -119,9 +134,9 @@ class StorageManager:
 
     def load_blockchain_data(self):
         result = self.mongo_db.blockchain_data.find_one({})
+        chain = []
         if result:
             chain_data = result["chain"]
-            blockchain = Blockchain(None) #FIX: pass node
 
             for block_data in chain_data:
                 index = block_data["index"]
@@ -141,9 +156,8 @@ class StorageManager:
 
                 # Create the block and add it to the blockchain
                 block = Block(index, previous_hash, transactions, timestamp, nonce, difficulty)
-                blockchain.chain.append(block)
-
-            return blockchain
+                chain.append(block)
+            return chain
         else:
             return None  # Or whatever makes sense for your application
            

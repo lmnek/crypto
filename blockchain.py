@@ -4,9 +4,7 @@ import time
 import hashlib
 from transaction import*
 from storage import StorageManager
-
-# Inspiration from
-# https://www.alibabacloud.com/blog/595314
+import redis
 
 class Block:
     def __init__(self, index, previous_hash, transactions, timestamp, nonce, difficulty):
@@ -81,7 +79,7 @@ class Blockchain:
         self.unconfirmed_transactions = []
         self.difficulty = 5 
         self.break_mining = False
-        self.utxos = {} # store unspent UTXOs, key is (txid, vout) -> TODO: redis
+        self.utxos = redis.Redis(host='localhost', port=6379, db=0) # store unspent UTXOs, key is (txid, vout)
         self.storage_manager = StorageManager()
         self.node = node
         node.set_blockchain(self)
@@ -95,6 +93,9 @@ class Blockchain:
 
     # receive block from a peer
     def receive_block(self, block: Block):
+        # need to restructure blockchain after fork
+        if block.index < self.chain.index:
+            return self.receive_past_block(block)
         # skip if fetching genesis block
         if len(self.chain) != 0:
             proof = block.compute_hash()
@@ -105,6 +106,7 @@ class Blockchain:
                 or proof == prev_hash \
                 or block.previous_hash != prev_hash \
                 or block.timestamp >= int(time.time()) \
+                or block.calculate_merkle_root() != block.merkle_root \
                 or not block.valid_transactions(self.utxos):
                 return False
 
@@ -115,20 +117,59 @@ class Blockchain:
 
         return True 
 
+    def receive_past_block(self, block: Block):
+        if block.index != self.chain[0].index - 1:
+            return False
+        self.chain.append(block)
+        if not self.reorganize_chain(block.index):
+            self.chain.pop()
+            return False
+        self.rebuild_utxos()
+        return True
+
+    def reorganize_chain(self, fork_index):
+        for i in range(fork_index, len(self.chain)):
+            current_block = self.chain[i]
+            if i > 0:
+                previous_block = self.chain[i - 1]
+                if current_block.previous_hash != previous_block.compute_hash():
+                    return False
+        for i in range(fork_index, len(self.chain)):
+            current_block = self.chain[i]
+            if i > 0:
+                previous_block = self.chain[i - 1]
+                if current_block.previous_hash != previous_block.compute_hash():
+                    self.switch_to_original_chain(fork_index)
+                    return False
+        if len(self.chain) <= fork_index:
+            self.switch_to_original_chain(fork_index)
+            return False
+        return True
+
+    def switch_to_original_chain(self, fork_index):
+        while len(self.chain) > fork_index:
+            self.chain.pop()
+
+    def rebuild_utxos(self):
+        self.utxos.flushdb()
+        for block in self.chain:
+            self.update_utxos(block)
+
     def receive_transaction(self, tx: Transaction):
         # Validate transaction
         input_value = 0
         output_value = sum(output.amount for output in tx.outputs)
         for input in tx.inputs:
-            key = (input.prev_txid, input.vout)
-            if key not in self.utxos:
+            key = f"{input.prev_txid}:{input.vout}"
+            utxo_data = self.utxos[key]
+            if utxo_data is None:
                 return False
-            input_value += self.utxos[key].amount
+            utxo = json.loads(str(self.utxos.get(key)))
+            input_value += utxo["amount"]
         if not tx.verify() or input_value < output_value:
             return False
         
         # NOTE: this doesnt add to currently mined blockconsider
-        # consider adding it
         self.unconfirmed_transactions.append(tx)
         return True
 
@@ -150,31 +191,39 @@ class Blockchain:
     def find_inputs(self, sender, amount):
         total_input_value = 0
         inputs = []
-        for key, o in self.utxos.items():
-            if o.address == sender:
-                total_input_value += o.amount
-                inputs.append(Input(key[0], key[1]))
-                if total_input_value >= amount:
-                    break
+        for key in self.utxos.scan_iter("utxo:*"):
+            utxo_data = self.utxos.get(key)
+            if utxo_data is not None:
+                utxo = json.loads(str(utxo_data))
+                if utxo['address'] == sender:
+                    total_input_value += utxo['amount']
+                    _, prev_txid, vout_str = key.decode('utf-8').split(':')
+                    inputs.append(Input(prev_txid, int(vout_str)))
+                    if total_input_value >= amount:
+                        break
         return (total_input_value, inputs)
 
     def update_utxos(self, new_block: Block):
         for tx in new_block.transactions:
             # remove spent UTXOs
             for input in tx.inputs:
-                key = (input.prev_txid, input.vout)
-                if key in self.utxos:
-                    del self.utxos[key]
+                key = f"{input.prev_txid}:{input.vout}"
+                self.utxos.delete(key)
+
             # add new outputs
             tx_id = tx.compute_txid()
             for vout, output in enumerate(tx.outputs):
-                self.utxos[(tx_id, vout)] = output
+                key = f"{tx_id}:{vout}"
+                self.utxos[key] = output
 
     def get_balance(self, address):
         balance = 0
-        for u  in self.utxos.values():
-            if u.address == address:
-                balance += u.amount
+        for key in self.utxos.scan_iter("utxo:*"):
+            utxo_data = self.utxos.get(key)
+            if utxo_data is not None:
+                utxo = json.loads(str(utxo_data))
+                if utxo['address'] == address:
+                    balance += utxo['amount']
         return balance
 
     def create_coinbase_transaction(self, recipient, amount, index):
@@ -242,16 +291,20 @@ class Blockchain:
                 return False
         return True
 
+    # update difficulty to take 1 minute to mine block
+    # decide according to last 20 blocks
     def dynamic_difficulty(self):
         if len(self.chain) > 20:
-            actual_time_diff = self.chain[i].timestamp - self.chain[i - 20].timestamp
-            old_difficulty = self.chain[i].difficulty
-            estimated_time_diff = 1200 # If want to generate 1 block in 10 min, then change 1200 -> 12000
+            actual_time_diff = self.chain[-1].timestamp - self.chain[-21].timestamp
+            old_difficulty = self.chain[-1].difficulty
+            estimated_time_diff = 1200 # 1 minute
+
+            if actual_time_diff == 0:
+                actual_time_diff = 1
             new_difficulty = old_difficulty * estimated_time_diff // actual_time_diff
-            # lecture material("Project Q & A page:17) is "old_difficulty * actual_time_diff // estimated_time_diff(e.g.1200)" but it probably wrong
-            # print(f'new difficulty {required_blockchain_difficulty}')
-            return new_difficulty # 1 block will be generated in 1 min.
-        return self.difficulty  # if number of block < 20 return 5
+
+            return max(new_difficulty, 1)
+        return self.difficulty
 
     def calculate_cumulative_difficulty(self):
         cumulative_difficulty = 0
@@ -259,8 +312,16 @@ class Blockchain:
             cumulative_difficulty += 2 ** block.difficulty
         return cumulative_difficulty
 
-    def disconnect_node(self):
+    def load_blockchain(self):
+        chain = self.storage_manager.load_blockchain_data()
+        if chain:
+            self.chain = chain
+        self.unconfirmed_transactions = self.storage_manager.load_all_transactions()
+
+    def quit(self):
         self.node.close()
+        self.storage_manager.store_blockchain_data(self) # save to MongoDB
+        self.storage_manager.close_connection()
 
     def latest_block(self):
         if len(self.chain) == 0:

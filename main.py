@@ -9,9 +9,8 @@ import jsonpickle
 import json
 from wallet import *
 
-HOST='127.0.0.1'
-PORT=2222
-SEED_NODES = [('127.0.0.1', 6005)]
+HOST='127.0.0.1' # local for testing
+SEED_NODES = [('127.0.0.1', 6005)] # can be multiple ones
 
 # Test suite
 #unittest.main()
@@ -28,64 +27,57 @@ class TestBlockchain(unittest.TestCase):
         self.assertTrue(transaction.verify())
 
     def test_blockchain_creation_and_mining(self):
-        blockchain_cli = BlockchainCLI(PORT)
-        blockchain_cli.blockchain.create_genesis_block(difficulty=4)
+        node = Node(HOST, 2222)
+        blockchain = Blockchain(node)
+        blockchain.create_genesis_block(difficulty=4)
 
         sender_private_key, sender = generate_address()
         recipient = "recipient_address"
         
         # Add a transaction and mine a block
         amount = 5.0
-        blockchain_cli.blockchain.create_transaction(sender, recipient, amount, sender_private_key)
+        blockchain.create_transaction(sender, recipient, amount, sender_private_key)
         blockchain_cli.mine_block()
 
         # Check if the blockchain is valid
-        self.assertTrue(blockchain_cli.blockchain.is_chain_valid())
-
-        blockchain_cli.blockchain.disconnect_node()
+        self.assertTrue(blockchain.is_chain_valid())
+        blockchain.quit()
 
     def test_mining_with_transactions_and_balance(self):
-        blockchain_cli = BlockchainCLI(PORT + 1)
-        blockchain_cli.blockchain.create_genesis_block(difficulty=4)
+        node = Node(HOST, 2223)
+        blockchain = Blockchain(node)
+        blockchain.create_genesis_block(difficulty=4)
 
         # Add a transaction and mine a block
         sender_private_key, sender = generate_address()
         recipient = "recipient_address"
         amount = 5.0
-        blockchain_cli.blockchain.create_transaction(sender, recipient, amount, sender_private_key)
-        blockchain_cli.mine_block()
+        blockchain.create_transaction(sender, recipient, amount, sender_private_key)
+        blockchain.mine(sender)
 
         # Check if the blockchain is valid
-        self.assertTrue(blockchain_cli.blockchain.is_chain_valid())
-
-        # Check if the miner's balance has increased
-        blockchain_cli.print_miner_address()
-        self.assertTrue(True)  
-
-        blockchain_cli.blockchain.disconnect_node()
+        self.assertTrue(blockchain.is_chain_valid())
+        blockchain.quit()
 
     
 class BlockchainCLI:
-    def __init__(self, port):
+    def __init__(self):
         self.storage_manager = StorageManager()
 
         # decide how to connect to network
         seed_node = input('Start seed node or normal node? (s/n)') == 's'
-        if not port:
-            if seed_node:
-                self.node = Node(*SEED_NODES[0]) # start seed node
-            else:
-                self.node = Node(HOST, int(input('Port: ')))
-                for seed in SEED_NODES:
-                    try:
-                        seed_peer = self.node.connect_to_peer(*seed)
-                    except Exception as e:
-                        print(f'Error connecting to seed node: {e}')
+        if seed_node:
+            self.node = Node(*SEED_NODES[0]) # start seed node
         else:
-            self.node = Node(HOST, port)
+            self.node = Node(HOST, int(input('Port: ')))
+            for seed in SEED_NODES:
+                try:
+                    self.node.connect_to_peer(*seed)
+                except Exception as e:
+                    print(f'Error connecting to seed node: {e}')
         
         # Load blockchain data from MongoDB
-        self.blockchain = self.storage_manager.load_blockchain_data()
+        #self.blockchain = self.storage_manager.load_blockchain_data()
 
         self.blockchain = Blockchain(self.node)
         self.wallet = Wallet(self.blockchain)
@@ -111,17 +103,6 @@ class BlockchainCLI:
                 print("\n")
         else:
             print("No transactions found.")
-    def store_blockchain_data(self):
-        self.storage_manager.store_blockchain_data(self.blockchain)
-
-    def load_blockchain_data(self):
-        return self.storage_manager.load_blockchain_data()
-
-    def store_latest_states_in_memory(self, key, value):
-        self.storage_manager.store_latest_states_in_memory(key, value)
-
-    def load_latest_states_from_memory(self, key):
-        return self.storage_manager.load_latest_states_from_memory(key)
 
     def print_blockchain(self):
         blockchain_data = {"chain": []}
@@ -188,9 +169,12 @@ class BlockchainCLI:
                     self.wallet.transfer(sender_address, recipient_address, amount)
                 elif choice == '3':
                     self.wallet.print_addresses()
-                elif choice == '4':  # New option
+                elif choice == '4':  
                     self.wallet.print_utxos()
-                elif choice == '5':  # Updated option number
+                elif choice == '5':  
+                    self.blockchain.break_mining = True
+                    self.mine = False
+                    self.blockchain.quit()
                     return
                 else:
                     print("Invalid choice. Please enter a number between 0 and 5.")
@@ -205,8 +189,7 @@ class BlockchainCLI:
                 print("1. Add a transaction as miner")
                 print("2. Check current blockchain")
                 print("3. Check miner address balance")
-                print("4. Print blockchain data from database")
-                print("5. Print network info")
+                print("4. Print network info")
                 print("6. Print UTXOs (unspent)")
                 print("7. Start/stop mining")
                 print("8. Start/stop network logs")
@@ -225,7 +208,7 @@ class BlockchainCLI:
                 elif choice == '3':
                     self.print_miner_address()
                 elif choice == '4':
-                    self.store_blockchain_data()
+                    self.storage_manager.store_blockchain_data(self.blockchain)
                     limit = int(input("Enter the limit for printing blockchain data: "))
                     self.storage_manager.print_blockchain_data(limit)
                 elif choice == '5':
@@ -239,14 +222,18 @@ class BlockchainCLI:
                         case _:
                             print("Invalid choice")
                 elif choice == '6':
-                    utxos = [
-                        {
-                            'tx_id': key[0],
-                            'vout': key[1],
-                            'address': u.address,
-                            'amount': u.amount
-                        }
-                    for key, u in self.blockchain.utxos.items()]
+                    utxos = []
+                    for key in self.blockchain.utxos.scan_iter("utxo:*"):
+                        utxo_data = str(self.blockchain.utxos.get(key))
+                        if utxo_data is not None:
+                            utxo = json.loads(utxo_data)
+                            _, prev_txid, vout_str = key.decode('utf-8').split(':')
+                            utxos.append({
+                                'tx_id': prev_txid,
+                                'vout': int(vout_str),
+                                'address': utxo['address'],
+                                'amount': utxo['amount']
+                            })
                     print(json.dumps(utxos, indent=2))
                 elif choice == '7':
                    self.mine = not self.mine 
@@ -257,11 +244,7 @@ class BlockchainCLI:
                 elif choice == '10':
                     self.blockchain.break_mining = True
                     self.mine = False
-                    # Save blockchain data to MongoDB before exiting
-                    self.storage_manager.store_blockchain_data(self.blockchain)
-                    # Save UTXOs to Redis before exiting
-                    utxos_json = json.dumps(self.blockchain.utxos)
-                    self.storage_manager.store_latest_states_in_memory('utxos', utxos_json)
+                    self.blockchain.quit()
                     return
                 else:
                     print("Invalid choice. Please enter a number between 0 and 10.")
@@ -273,12 +256,5 @@ if __name__ == '__main__':
     if input('Run tests? (y/n)') == 'y':
         unittest.main()
     else:
-        storage_manager = StorageManager()
-        blockchain_cli = BlockchainCLI(None)
-        # Load UTXOs from Redis
-        utxos_json = blockchain_cli.storage_manager.load_latest_states_from_memory('utxos')
-        if utxos_json is not None:
-            blockchain_cli.blockchain.utxos = json.loads(utxos_json)
+        blockchain_cli = BlockchainCLI()
         blockchain_cli.run_cli()
-        blockchain_cli.blockchain.disconnect_node()
-        storage_manager.close_connection()
