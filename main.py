@@ -27,9 +27,6 @@ class BlockchainCLI:
                 except Exception as e:
                     print(f'Error connecting to seed node: {e}')
         
-        # Load blockchain data from MongoDB
-        #self.blockchain = self.storage_manager.load_blockchain_data()
-
         self.blockchain = Blockchain(self.node)
         self.wallet = Wallet(self.blockchain)
         self.mine = False

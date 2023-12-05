@@ -101,7 +101,6 @@ class Blockchain:
             proof = block.compute_hash()
             last_block = self.latest_block()
             prev_hash = last_block.compute_hash()         
-            # WARNING: additional validation may be required (e.g. transactions)
             if not self.is_valid_proof(self, proof) \
                 or proof == prev_hash \
                 or block.previous_hash != prev_hash \
